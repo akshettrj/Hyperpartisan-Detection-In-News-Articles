@@ -2,7 +2,7 @@
 
 _Project for Adv NLP Course (CS7.501.M21) at IIITH_
 
-**Team:-** <u>Sentiment Detected: HMMMMMM</u>
+**Team:-** Sentiment Detected: HMMMMMM
 
 **Members:-**
 - **Akshett Rai Jindal** *(2019114001)*
