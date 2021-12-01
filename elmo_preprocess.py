@@ -72,6 +72,7 @@ truth_root = truth_tree.getroot()
 
 dataset_articles_text = []
 dataset_articles_truth_value = []
+dataset_articles_id = []
 
 for articles_child, truth_child in zip(articles_root, truth_root):
     articles_attributes = articles_child.attrib
@@ -81,7 +82,8 @@ for articles_child, truth_child in zip(articles_root, truth_root):
     article_text = " ".join(article_text)
 
     dataset_articles_text.append(article_text)
-    dataset_articles_truth_value.append(bool(truth_attributes["hyperpartisan"]))
+    dataset_articles_truth_value.append(1 if bool(truth_attributes["hyperpartisan"]) else 0)
+    dataset_articles_id.append(truth_attributes["id"])
 
 num_articles = len(dataset_articles_text)
 
@@ -103,7 +105,9 @@ context_embeddings_op = bilm(context_character_ids)
 
 elmo_context_input = weight_layers('input', context_embeddings_op, l2_coef=0.0)
 
-for i in training_articles:
+dataset_elmo_embeddings = []
+
+for i in range(len(dataset_articles_text)):
 
     article_text = dataset_articles_text[i]
 
@@ -130,3 +134,24 @@ for i in training_articles:
         ])
 
     padded_embedding = sequence.pad_sequences([article_sentences_embeddings], maxlen=200, dtype='float32')[0]
+
+    dataset_elmo_embeddings.append(padded_embedding)
+
+dataset_elmo_embeddings_np = np.array(dataset_elmo_embeddings)
+dataset_articles_id_np = np.array(dataset_articles_id)
+dataset_articles_truth_value_np = np.array(dataset_articles_truth_value)
+
+cnn_model = conv1d_BN(200, 200)
+checkpoints = ModelCheckpoint(filepath='./models/CNN_elmo_checkpoint.hdf5',
+                              verbose=1, monitor='val_acc', save_best_only=True)
+
+
+history = cnn_model.fit(
+    dataset_elmo_embeddings_np[training_articles], dataset_articles_truth_value_np[training_articles],
+    batch_size=32, verbose=1, epochs=1,
+    validation_data=[dataset_elmo_embeddings_np[testing_articles], dataset_articles_truth_value_np[testing_articles]],
+    callbacks=[checkpoints])
+
+cv_score = history.history['val_acc'][-1]
+
+print("Final Score of the Model:", cv_score)
