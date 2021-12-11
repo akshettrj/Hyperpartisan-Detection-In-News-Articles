@@ -164,61 +164,55 @@ with tf.Session() as sess:
 
     for i in tqdm(range(len(dataset_articles_text))):
 
-        try:
-            article_text = dataset_articles_text[i]
+        article_text = dataset_articles_text[i]
 
-            article_sentences = sent_tokenize(article_text)
-            # if len(article_sentences) > 200:
-                # article_sentences = article_sentences[:200]
+        article_sentences = sent_tokenize(article_text)
+        # if len(article_sentences) > 200:
+            # article_sentences = article_sentences[:200]
 
-            article_words = [word_tokenize(sentence) for sentence in article_sentences]
-            np.set_printoptions(threshold=sys.maxsize)
+        article_words = [word_tokenize(sentence) for sentence in article_sentences]
+        np.set_printoptions(threshold=sys.maxsize)
 
-            article_words += [["Apple"] * 40]
+        article_words += [["Apple"] * 40]
 
-            context_ids = batcher.batch_sentences(article_words)
+        context_ids = batcher.batch_sentences(article_words)
 
-            # emb = article_elmo_embeddings[sent_no, word_no]
-            article_elmo_embeddings = sess.run(
-                elmo_context_input['weighted_op'],
-                feed_dict={context_character_ids: context_ids}
-            )
+        # emb = article_elmo_embeddings[sent_no, word_no]
+        article_elmo_embeddings = sess.run(
+            elmo_context_input['weighted_op'],
+            feed_dict={context_character_ids: context_ids}
+        )
 
-            subjective_sentences_embeddings = []
-            objective_sentences_embeddings = []
+        subjective_sentences_embeddings = []
+        objective_sentences_embeddings = []
 
-            for indx, sentence_embedd in article_elmo_embeddings[:-1]:
+        for indx, sentence_embedd in enumerate(article_elmo_embeddings[:-1]):
 
-                is_subjective = subjectivity_classifier_model(
-                        np.array([sentence_embedd])
-                        ).detach().numpy()[0][0]
+            is_subjective = subjectivity_classifier_model(
+                    torch.FloatTensor(np.array([sentence_embedd[:40]]))
+                    ).detach().numpy()[0][0] < 0
 
-                if is_subjective:
-                    subjective_sentences_embeddings.append(sentence_embedd)
-                else:
-                    objective_sentences_embeddings.append(sentence_embedd)
-
-            if len(subjective_sentences_embeddings) > 0 and len(objective_sentences_embeddings) > 0:
-                final_embeddings = np.concatenate((subjective_sentences_embeddings, objective_sentences_embeddings))
-            elif len(subjective_sentences_embeddings) > 0:
-                final_embeddings = subjective_sentences_embeddings
+            if is_subjective:
+                subjective_sentences_embeddings.append(sentence_embedd)
             else:
-                final_embeddings = objective_sentences_embeddings
+                objective_sentences_embeddings.append(sentence_embedd)
 
-            article_sentences_embeddings = np.average(
-                    final_embeddings, axis=1
-                    )
+        if len(subjective_sentences_embeddings) > 0 and len(objective_sentences_embeddings) > 0:
+            final_embeddings = np.concatenate((subjective_sentences_embeddings, objective_sentences_embeddings))
+        elif len(subjective_sentences_embeddings) > 0:
+            final_embeddings = subjective_sentences_embeddings
+        else:
+            final_embeddings = objective_sentences_embeddings
+
+        article_sentences_embeddings = np.average(
+                final_embeddings, axis=1
+                )
 
 
-            padded_embedding = sequence.pad_sequences([article_sentences_embeddings], maxlen=200, dtype='float32')[0]
+        article_sentences_embeddings = article_sentences_embeddings[:200]
+        padded_embedding = sequence.pad_sequences([article_sentences_embeddings], maxlen=200, dtype='float32')[0]
 
-            dataset_elmo_embeddings.append(padded_embedding)
-
-        except Exception as err:
-            print(dataset_articles_id[i])
-            print(dataset_articles_text[i])
-            print(err)
-            exit(0)
+        dataset_elmo_embeddings.append(padded_embedding)
 
 dataset_elmo_embeddings_np = np.array(dataset_elmo_embeddings)
 dataset_articles_id_np = np.array(dataset_articles_id)
