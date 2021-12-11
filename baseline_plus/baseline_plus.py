@@ -3,19 +3,15 @@ import random
 from math import floor
 import tensorflow as tf
 import numpy as np
-from scipy import spatial
 from bilm import Batcher, BidirectionalLanguageModel, weight_layers
 from nltk.tokenize import sent_tokenize, word_tokenize
 from tqdm import tqdm
 import sys
 
 from keras.preprocessing import sequence
-from sklearn.preprocessing import LabelEncoder
-from sklearn.model_selection import StratifiedKFold
-from keras.layers import Input, Flatten, Dense, Activation,Average
-from keras.layers import Concatenate,Dropout,Conv1D,MaxPooling1D,BatchNormalization
+from keras.layers import Input, Flatten, Dense, Activation
+from keras.layers import Concatenate,Conv1D,MaxPooling1D,BatchNormalization
 from keras.models import Model
-from keras import backend as K
 from keras.callbacks import ModelCheckpoint
 
 import torch
@@ -26,9 +22,9 @@ class SentenceCNN(nn.Module):
     def __init__(self, D):
         super(SentenceCNN, self).__init__()
 
-        self.conv_3 = nn.Conv1d(in_channels=D, out_channels=100, kernel_size=3)
-        self.conv_4 = nn.Conv1d(in_channels=D, out_channels=100, kernel_size=4)
-        self.conv_5 = nn.Conv1d(in_channels=D, out_channels=100, kernel_size=5)
+        self.conv_0 = nn.Conv1d(in_channels=D, out_channels=100, kernel_size=3)
+        self.conv_1 = nn.Conv1d(in_channels=D, out_channels=100, kernel_size=4)
+        self.conv_2 = nn.Conv1d(in_channels=D, out_channels=100, kernel_size=5)
 
         self.dropout = nn.Dropout(p=0.5)
         self.fc = nn.Linear(300, 1)
@@ -36,9 +32,9 @@ class SentenceCNN(nn.Module):
     def forward(self, x):
         # x = self.embedding(x)
         x = x.transpose(1,2)
-        x3 = F.relu(self.conv_3(x))
-        x4 = F.relu(self.conv_4(x))
-        x5 = F.relu(self.conv_5(x))
+        x3 = F.relu(self.conv_0(x))
+        x4 = F.relu(self.conv_1(x))
+        x5 = F.relu(self.conv_2(x))
         x3 = nn.MaxPool1d(kernel_size = 38)(x3)
         x4 = nn.MaxPool1d(kernel_size = 37)(x4)
         x5 = nn.MaxPool1d(kernel_size = 36)(x5)
@@ -48,47 +44,23 @@ class SentenceCNN(nn.Module):
         return self.fc(out)
 
 def conv1d_BN(max_len, embed_size):
-    '''
-    CNN with Batch Normalisation.
-    :param max_len: maximum sentence numbers, default=200
-    :param embed_size: ELMo embeddings dimension, default=1024
-    :return: CNN with BN model
-    '''
-    filter_sizes = [2, 3, 4, 5, 6]
     num_filters = 128
+    filter_sizes = list(range(2, 7))
+    maxpools = []
+
     inputs = Input(shape=(max_len,embed_size), dtype='float32')
-    conv_0 = Conv1D(num_filters, kernel_size=(filter_sizes[0]))(inputs)
-    act_0 = Activation('relu')(conv_0)
-    bn_0 = BatchNormalization(momentum=0.7)(act_0)
 
-    conv_1 = Conv1D(num_filters, kernel_size=(filter_sizes[1]))(inputs)
-    act_1 = Activation('relu')(conv_1)
-    bn_1 = BatchNormalization(momentum=0.7)(act_1)
+    for i in range(5):
+        conv_i = Conv1D(num_filters, kernel_size=(filter_sizes[i]))(inputs)
+        act_i = Activation('relu')(conv_i)
+        bn_i = BatchNormalization(momentum=0.7)(act_i)
+        maxpools.append(MaxPooling1D(pool_size=(max_len - filter_sizes[i]))(bn_i))
 
-    conv_2 = Conv1D(num_filters, kernel_size=(filter_sizes[2]))(inputs)
-    act_2 = Activation('relu')(conv_2)
-    bn_2 = BatchNormalization(momentum=0.7)(act_2)
-
-    conv_3 = Conv1D(num_filters, kernel_size=(filter_sizes[3]))(inputs)
-    act_3 = Activation('relu')(conv_3)
-    bn_3 = BatchNormalization(momentum=0.7)(act_3)
-
-    conv_4 = Conv1D(num_filters, kernel_size=(filter_sizes[4]))(inputs)
-    act_4 = Activation('relu')(conv_4)
-    bn_4 = BatchNormalization(momentum=0.7)(act_4)
-
-    maxpool_0 = MaxPooling1D(pool_size=(max_len - filter_sizes[0]))(bn_0)
-    maxpool_1 = MaxPooling1D(pool_size=(max_len - filter_sizes[1]))(bn_1)
-    maxpool_2 = MaxPooling1D(pool_size=(max_len - filter_sizes[2]))(bn_2)
-    maxpool_3 = MaxPooling1D(pool_size=(max_len - filter_sizes[3]))(bn_3)
-    maxpool_4 = MaxPooling1D(pool_size=(max_len - filter_sizes[4]))(bn_4)
-
-    concatenated_tensor = Concatenate()([maxpool_0, maxpool_1, maxpool_2, maxpool_3, maxpool_4])
+    concatenated_tensor = Concatenate()(maxpools)
     flatten = Flatten()(concatenated_tensor)
     output = Dense(units=1, activation='sigmoid')(flatten)
 
     model = Model(inputs=inputs, outputs=output)
-    #model = multi_gpu_model(model, gpus=gpus)
     model.summary()
     model.compile(loss='binary_crossentropy', metrics=['acc'], optimizer='adam')
     return model
@@ -129,8 +101,6 @@ for articles_child, truth_child in zip(articles_root, truth_root):
         dataset_articles_truth_value.append(0)
     dataset_articles_id.append(truth_attributes["id"])
 
-    # if len(dataset_articles_text) > 100:
-        # break
 
 num_articles = len(dataset_articles_text)
 
@@ -167,8 +137,6 @@ with tf.Session() as sess:
         article_text = dataset_articles_text[i]
 
         article_sentences = sent_tokenize(article_text)
-        # if len(article_sentences) > 200:
-            # article_sentences = article_sentences[:200]
 
         article_words = [word_tokenize(sentence) for sentence in article_sentences]
         np.set_printoptions(threshold=sys.maxsize)
@@ -177,7 +145,6 @@ with tf.Session() as sess:
 
         context_ids = batcher.batch_sentences(article_words)
 
-        # emb = article_elmo_embeddings[sent_no, word_no]
         article_elmo_embeddings = sess.run(
             elmo_context_input['weighted_op'],
             feed_dict={context_character_ids: context_ids}

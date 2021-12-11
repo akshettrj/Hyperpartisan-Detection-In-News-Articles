@@ -3,72 +3,44 @@ import random
 from math import floor
 import tensorflow as tf
 import numpy as np
-from scipy import spatial
 from bilm import Batcher, BidirectionalLanguageModel, weight_layers
 from nltk.tokenize import sent_tokenize, word_tokenize
 from tqdm import tqdm
 import sys
 
 from keras.preprocessing import sequence
-from sklearn.preprocessing import LabelEncoder
-from sklearn.model_selection import StratifiedKFold
-from keras.layers import Input, Flatten, Dense, Activation,Average
-from keras.layers import Concatenate,Dropout,Conv1D,MaxPooling1D,BatchNormalization
+from keras.layers import Input, Flatten, Dense, Activation
+from keras.layers import Concatenate,Conv1D,MaxPooling1D,BatchNormalization
 from keras.models import Model
-from keras import backend as K
 from keras.callbacks import ModelCheckpoint
 
 def conv1d_BN(max_len, embed_size):
-    '''
-    CNN with Batch Normalisation.
-    :param max_len: maximum sentence numbers, default=200
-    :param embed_size: ELMo embeddings dimension, default=1024
-    :return: CNN with BN model
-    '''
-    filter_sizes = [2, 3, 4, 5, 6]
     num_filters = 128
+    filter_sizes = list(range(2, 7))
+    maxpools = []
+
     inputs = Input(shape=(max_len,embed_size), dtype='float32')
-    conv_0 = Conv1D(num_filters, kernel_size=(filter_sizes[0]))(inputs)
-    act_0 = Activation('relu')(conv_0)
-    bn_0 = BatchNormalization(momentum=0.7)(act_0)
 
-    conv_1 = Conv1D(num_filters, kernel_size=(filter_sizes[1]))(inputs)
-    act_1 = Activation('relu')(conv_1)
-    bn_1 = BatchNormalization(momentum=0.7)(act_1)
+    for i in range(5):
+        conv_i = Conv1D(num_filters, kernel_size=(filter_sizes[i]))(inputs)
+        act_i = Activation('relu')(conv_i)
+        bn_i = BatchNormalization(momentum=0.7)(act_i)
+        maxpools.append(MaxPooling1D(pool_size=(max_len - filter_sizes[i]))(bn_i))
 
-    conv_2 = Conv1D(num_filters, kernel_size=(filter_sizes[2]))(inputs)
-    act_2 = Activation('relu')(conv_2)
-    bn_2 = BatchNormalization(momentum=0.7)(act_2)
-
-    conv_3 = Conv1D(num_filters, kernel_size=(filter_sizes[3]))(inputs)
-    act_3 = Activation('relu')(conv_3)
-    bn_3 = BatchNormalization(momentum=0.7)(act_3)
-
-    conv_4 = Conv1D(num_filters, kernel_size=(filter_sizes[4]))(inputs)
-    act_4 = Activation('relu')(conv_4)
-    bn_4 = BatchNormalization(momentum=0.7)(act_4)
-
-    maxpool_0 = MaxPooling1D(pool_size=(max_len - filter_sizes[0]))(bn_0)
-    maxpool_1 = MaxPooling1D(pool_size=(max_len - filter_sizes[1]))(bn_1)
-    maxpool_2 = MaxPooling1D(pool_size=(max_len - filter_sizes[2]))(bn_2)
-    maxpool_3 = MaxPooling1D(pool_size=(max_len - filter_sizes[3]))(bn_3)
-    maxpool_4 = MaxPooling1D(pool_size=(max_len - filter_sizes[4]))(bn_4)
-
-    concatenated_tensor = Concatenate()([maxpool_0, maxpool_1, maxpool_2, maxpool_3, maxpool_4])
+    concatenated_tensor = Concatenate()(maxpools)
     flatten = Flatten()(concatenated_tensor)
     output = Dense(units=1, activation='sigmoid')(flatten)
 
     model = Model(inputs=inputs, outputs=output)
-    #model = multi_gpu_model(model, gpus=gpus)
     model.summary()
     model.compile(loss='binary_crossentropy', metrics=['acc'], optimizer='adam')
     return model
 
-articles_xmltree_file = './data/articles-training-byarticle-20181122.xml'
+articles_xmltree_file = '../data/articles-training-byarticle-20181122.xml'
 articles_tree = ET.parse(articles_xmltree_file)
 articles_root = articles_tree.getroot()
 
-truth_xmltree_file = './data/ground-truth-training-byarticle-20181122.xml'
+truth_xmltree_file = '../data/ground-truth-training-byarticle-20181122.xml'
 truth_tree = ET.parse(truth_xmltree_file)
 truth_root = truth_tree.getroot()
 
@@ -96,8 +68,8 @@ for articles_child, truth_child in zip(articles_root, truth_root):
         dataset_articles_truth_value.append(0)
     dataset_articles_id.append(truth_attributes["id"])
 
-    # if len(dataset_articles_text) > 100:
-        # break
+    if len(dataset_articles_text) > 100:
+        break
 
 num_articles = len(dataset_articles_text)
 
@@ -106,9 +78,9 @@ training_articles = random.sample(range(num_articles), floor(num_articles*0.8))
 testing_articles = [_ for _ in range(num_articles) if _ not in training_articles]
 
 # For ELMo
-vocabulary_file_path = "./elmo/vocabulary.txt"
-options_file_path = "./elmo/options.json"
-weights_file_path = "./elmo/weights.hdf5"
+vocabulary_file_path = "../elmo/vocabulary.txt"
+options_file_path = "../elmo/options.json"
+weights_file_path = "../elmo/weights.hdf5"
 
 batcher = Batcher(vocabulary_file_path, 50)
 context_character_ids = tf.placeholder('int32', shape=(None, None, 50))
@@ -120,7 +92,10 @@ elmo_context_input = weight_layers('input', context_embeddings_op, l2_coef=0.0)
 
 dataset_elmo_embeddings = []
 
-seed = int(sys.argv[1])
+if len(sys.argv) == 1:
+    seed = 10
+else:
+    seed = int(sys.argv[1])
 random.seed(seed)
 
 with tf.Session() as sess:
@@ -137,40 +112,17 @@ with tf.Session() as sess:
 
             article_words = [word_tokenize(sentence) for sentence in article_sentences]
             np.set_printoptions(threshold=sys.maxsize)
-            # print(article_words)
-            # print(article_words.shape)
-            # print("=====================================")
 
             context_ids = batcher.batch_sentences(article_words)
 
-            # emb = article_elmo_embeddings[sent_no, word_no]
             article_elmo_embeddings = sess.run(
                 elmo_context_input['weighted_op'],
                 feed_dict={context_character_ids: context_ids}
             )
-            # print(article_elmo_embeddings[0])
-            # print(article_elmo_embeddings.shape)
-            # print(article_elmo_embeddings[0].shape)
-            # print(article_elmo_embeddings[0][0].shape)
-            # print("=====================================")
 
-            # article_sentences_embeddings = np.array([
-            #     np.average(article_elmo_embeddings[sent_no,:], axis=0)
-            #     for sent_no in range(len(article_sentences))
-            # ])
             article_sentences_embeddings = np.average(
                     article_elmo_embeddings, axis=1
                     )
-
-            # print(article_sentences_embeddings)
-            # print(article_sentences_embeddings.shape)
-            # print("=====================================")
-
-            # if len(article_sentences_embeddings) < 200:
-                # np.concatenate((
-                            # article_sentences_embeddings,
-                            # np.zeros((200 - len(article_sentences_embeddings)))
-                            # ))
 
             padded_embedding = sequence.pad_sequences([article_sentences_embeddings], maxlen=200, dtype='float32')[0]
 
@@ -190,10 +142,9 @@ cnn_model = conv1d_BN(200, 1024)
 checkpoints = ModelCheckpoint(filepath='./models/CNN_elmo_checkpoint.hdf5',
                               verbose=0, monitor='val_acc', save_best_only=True)
 
-
 history = cnn_model.fit(
         x=dataset_elmo_embeddings_np[training_articles], y=dataset_articles_truth_value_np[training_articles],
-        batch_size=32, verbose=0, epochs=100,
+        batch_size=32, verbose=0, epochs=1,
         validation_data=(dataset_elmo_embeddings_np[testing_articles], dataset_articles_truth_value_np[testing_articles]),
         callbacks=[checkpoints]
         )
