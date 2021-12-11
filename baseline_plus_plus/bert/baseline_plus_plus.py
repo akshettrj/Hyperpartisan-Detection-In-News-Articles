@@ -4,7 +4,6 @@ from math import floor
 import tensorflow as tf
 import numpy as np
 from scipy import spatial
-from bilm import Batcher, BidirectionalLanguageModel, weight_layers
 from nltk.tokenize import sent_tokenize, word_tokenize
 from tqdm import tqdm
 import sys
@@ -189,12 +188,12 @@ dataset_articles_truth_value_np = np.array(dataset_articles_truth_value)
 
 cnn_model = conv1d_BN(200, 384)
 checkpoints = ModelCheckpoint(filepath='./models/CNN_elmo_checkpoint.hdf5',
-                              verbose=0, monitor='val_acc', save_best_only=True)
+                              verbose=1, monitor='val_acc', save_best_only=True)
 
 
 history = cnn_model.fit(
         x=dataset_elmo_embeddings_np[training_articles], y=dataset_articles_truth_value_np[training_articles],
-        batch_size=32, verbose=0, epochs=100,
+        batch_size=32, verbose=1, epochs=100,
         validation_data=(dataset_elmo_embeddings_np[testing_articles], dataset_articles_truth_value_np[testing_articles]),
         callbacks=[checkpoints]
         )
@@ -202,6 +201,7 @@ history = cnn_model.fit(
 cv_score = history.history['val_acc'][-1]
 
 with open("./results.txt", "a") as rf:
-    rf.write(f"Final score of Baseline Model for seed = {seed} is {cv_score}\n")
+    rf.write("==============================\n")
+    rf.write(f"Final score of Bert Model for seed = {seed} is {cv_score}\n")
 
-print("Final Score of the Baseline Model:", cv_score)
+print("Final Score of the Bert Model:", cv_score)
