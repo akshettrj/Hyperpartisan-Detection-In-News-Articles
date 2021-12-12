@@ -1,0 +1,8 @@
+tensorflow==1.15.0
+tensorflow-gpu==1.15.0
+scipy
+nltk
+keras==2.3.0
+sklearn
+tqdm
+torch

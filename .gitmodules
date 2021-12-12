@@ -1,0 +1,3 @@
+[submodule "src/elmo/bilm-tf"]
+	path = src/elmo/bilm-tf
+	url = https://github.com/allenai/bilm-tf
