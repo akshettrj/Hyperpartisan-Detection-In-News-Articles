@@ -1,0 +1,9 @@
+tensorflow
+tensorflow-gpu
+scipy
+nltk
+keras
+sklearn
+tqdm
+sentence-transformers
+torch
